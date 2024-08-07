@@ -1,0 +1,16 @@
+# idea IDE project files
+.idea/
+
+#  Local .terraform directories
+**/.terraform/*
+
+# Ignore tfstate backup files
+*.tfstate
+*.tfstate.*
+
+# Ignore tf crash logs
+crash.log
+
+# generated files
+*.pyc
+**/generated/*
