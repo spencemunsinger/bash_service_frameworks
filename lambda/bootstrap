@@ -1,0 +1,50 @@
+#!/bin/bash
+
+set -euo pipefail
+
+function parseEventToArgs() {
+  local event=$1
+  local args=""
+  local key=""
+  local value=""
+  while IFS= read -r line; do
+    key=$(echo $line | jq -r '.name')
+    value=$(echo $line | jq -r '.value')
+    args="$args --$key $value"
+  done < <(echo $event | jq -c '.[]')
+  echo $args
+}
+
+function handler () {
+  EVENT_DATA=$1
+  echo "$EVENT_DATA" 1>&2;
+  #RESPONSE="Echoing request: '$EVENT_DATA'"
+  RESPONSE="$(/var/task/_main.sh $EVENT_DATA)"
+  echo $RESPONSE
+}
+
+_HANDLER="handler"
+
+# Processing
+while true
+do
+  HEADERS="$(mktemp)"
+  echo "headers: $HEADERS"
+  # Get an event. The HTTP request will block until one is received
+  EVENT_DATA=$(curl -sS -LD "$HEADERS" "http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/next")
+  echo "event: $EVENT_DATA"
+  # Extract request ID by scraping response headers received above
+  REQUEST_ID=$(grep -Fi Lambda-Runtime-Aws-Request-Id "$HEADERS" | tr -d '[:space:]' | cut -d: -f2)
+  echo "request: $REQUEST_ID"
+  echo "handler: ${_HANDLER}"
+
+  # Run the handler function from the script
+  RESPONSE=$($_HANDLER "$EVENT_DATA")
+  
+  echo "response: $RESPONSE"
+
+
+  # Send the response
+  echo "url: http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/$REQUEST_ID/response"
+  curl "http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/$REQUEST_ID/response"  -d "$RESPONSE"
+done
