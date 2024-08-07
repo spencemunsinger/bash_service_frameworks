@@ -35,38 +35,42 @@ Here’s an example using Flask (Python):
 Step 1: Dockerfile
 Dockerfile
 Copy code
-# Dockerfile
+
+#### Dockerfile
 FROM ubuntu:22.04
 
-# Install necessary packages
+\# Install necessary packages
 RUN apt-get update && apt-get install -y \
     python3-pip \
     awscli \
     ssh \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Flask
+\# Install Flask
 RUN pip3 install flask
 
-# Copy the bash script and the Flask app
+\# Copy the bash script and the Flask app
 COPY your_script.sh /usr/local/bin/your_script.sh
 COPY app.py /app/app.py
 
-# Make the script executable
+\# Make the script executable
 RUN chmod +x /usr/local/bin/your_script.sh
 
-# Set the working directory
+\# Set the working directory
 WORKDIR /app
 
-# Expose the Flask port
+\# Expose the Flask port
 EXPOSE 5000
 
-# Run the Flask app
+\# Run the Flask app
 CMD ["python3", "app.py"]
-Step 2: Flask Application
+#### Step 2: Flask Application
 python
 Copy code
-# app.py
+
+\# app.py
+
+```
 from flask import Flask, request, jsonify
 import subprocess
 
@@ -95,6 +99,8 @@ def execute_script():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+```
+    
 Step 3: Build and Push the Docker Image
 sh
 Copy code
