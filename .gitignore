@@ -14,3 +14,4 @@ crash.log
 # generated files
 *.pyc
 **/generated/*
+*.DS_Store
