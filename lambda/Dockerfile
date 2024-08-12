@@ -1,4 +1,5 @@
-FROM ubuntu:22.04
+#FROM ubuntu:22.04
+FROM artifactory.eng.toasttab.com/dockerhub/ubuntu:22.04
 
 # Define build-time variable
 ARG RUN_DIR=/var/task
@@ -11,8 +12,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Set the timezone you want to configure
 ENV TZ=Etc/UTC
-
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install necessary dependencies
 RUN apt-get update \
@@ -29,27 +28,27 @@ RUN apt-get update && apt-get install -y --fix-missing \
 
 # Create the directory and copy files
 RUN mkdir -p ${RUN_DIR}
+COPY lib ${RUN_DIR}/lib
+COPY conf ${RUN_DIR}/conf
 
-# # Create user and group with home directory set to RUN_DIR
-# RUN groupadd -r chase-keys && useradd -r -g chase-keys -d ${RUN_DIR} chase-keys
-# RUN echo "chase-keys ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+# Create user and group with home directory set to RUN_DIR
+RUN groupadd -r chase-keys && useradd -r -g chase-keys -d ${RUN_DIR} chase-keys
+#RUN echo "chase-keys ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Copy the main script and entrypoint script
 COPY _main.sh ${RUN_DIR}/_main.sh
+COPY main.sh ${RUN_DIR}/main.sh
 COPY bootstrap ${RUN_DIR}/bootstrap
-COPY function.sh ${RUN_DIR}/function.sh
 
-
-# Ensure the bash script is executable
+# Ensure scripts are executable
 RUN chmod +x ${RUN_DIR}/_main.sh
-# Make the bootstrap file executable
+RUN chmod +x ${RUN_DIR}/main.sh
 RUN chmod +x ${RUN_DIR}/bootstrap
-RUN chmod +x ${RUN_DIR}/function.sh
 
-# # Change ownership of files to chase-keys user
-# RUN chown -R chase-keys:chase-keys ${RUN_DIR}
+# Change ownership of files to chase-keys user
+RUN chown -R chase-keys:chase-keys ${RUN_DIR}
+# Switch to non-root user
+USER chase-keys
 
-# # Switch to non-root user
-# USER chase-keys
-
+# run bootstrap script
 CMD ["/var/task/bootstrap"]

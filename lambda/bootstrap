@@ -3,48 +3,109 @@
 set -euo pipefail
 
 function parseEventToArgs() {
-  local event=$1
-  local args=""
-  local key=""
-  local value=""
-  while IFS= read -r line; do
-    key=$(echo $line | jq -r '.name')
-    value=$(echo $line | jq -r '.value')
-    args="$args --$key $value"
-  done < <(echo $event | jq -c '.[]')
-  echo $args
+  local event="$1"
+  local args=$(echo "$event" | jq -r '.args')
+  echo "$args"
 }
 
+# function handler () {
+#   local bashargs="$1"
+#   # Split the arguments string into an array
+#   IFS=' ' read -r -a args_array <<< "$bashargs"
+#   # Pass the arguments array to the _main.sh script
+#   local RESPONSE
+#   /var/task/main.sh "${args_array[@]}"
+#   EXIT_STATUS=$?
+  
+#   # If the exit status is non-zero, indicate a failure
+#   if [ $EXIT_STATUS -ne 0 ]; then
+#     echo "Error: Script exited with status $EXIT_STATUS" >&2
+#     return $EXIT_STATUS
+#   fi
+# }
+
+# function handler () {
+#   local bashargs="$1"
+#   # Split the arguments string into an array
+#   IFS=' ' read -r -a args_array <<< "$bashargs"
+#   # Pass the arguments array to the _main.sh script
+#   local RESPONSE
+#   #RESPONSE=$(/var/task/_main.sh "${args_array[@]}")
+#   RESPONSE=$(/var/task/main.sh "${args_array[@]}")
+#   printf "%s" "$RESPONSE"
+# }
+
 function handler () {
-  EVENT_DATA=$1
-  echo "$EVENT_DATA" 1>&2;
-  #RESPONSE="Echoing request: '$EVENT_DATA'"
-  RESPONSE="$(/var/task/_main.sh $EVENT_DATA)"
-  echo $RESPONSE
+  local bashargs="$1"
+  # Split the arguments string into an array
+  IFS=' ' read -r -a args_array <<< "$bashargs"
+
+  # Capture the output and exit status
+  RESPONSE=$(/var/task/main.sh "${args_array[@]}" 2>&1)
+  EXIT_STATUS=$?
+
+  # If the exit status is non-zero, indicate a failure
+  if [ $EXIT_STATUS -ne 0 ]; then
+    echo "Error: Script exited with status $EXIT_STATUS" >&2
+    echo "$RESPONSE" >&2  # Preserve the debug output in the error response
+    return $EXIT_STATUS
+  fi
+
+  # Return the captured response if successful
+  printf "%s" "$RESPONSE"
 }
 
 _HANDLER="handler"
 
-# Processing
-while true
-do
-  HEADERS="$(mktemp)"
-  echo "headers: $HEADERS"
-  # Get an event. The HTTP request will block until one is received
-  EVENT_DATA=$(curl -sS -LD "$HEADERS" "http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/next")
-  echo "event: $EVENT_DATA"
-  # Extract request ID by scraping response headers received above
-  REQUEST_ID=$(grep -Fi Lambda-Runtime-Aws-Request-Id "$HEADERS" | tr -d '[:space:]' | cut -d: -f2)
-  echo "request: $REQUEST_ID"
-  echo "handler: ${_HANDLER}"
+# Check if running in AWS Lambda
+if [ -n "${AWS_LAMBDA_RUNTIME_API:-}" ]; then
+  # # Processing in AWS Lambda
+  # while true; do
+  #   HEADERS="$(mktemp)"
+  #   echo "headers: ${HEADERS}"
+  #   # Get an event. The HTTP request will block until one is received
+  #   EVENT_DATA=$(curl -sS -LD "${HEADERS}" "http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/next")
+  #   echo "event: ${EVENT_DATA}"
+  #   # Extract request ID by scraping response headers received above
+  #   REQUEST_ID=$(grep -Fi Lambda-Runtime-Aws-Request-Id "${HEADERS}" | tr -d '[:space:]' | cut -d: -f2)
+  #   echo "request: ${REQUEST_ID}"
+  #   echo "handler: ${_HANDLER}"
+  #   bashargs=$(parseEventToArgs "$EVENT_DATA")
+  #   # Run the handler function from the script
+  #   RESPONSE="$(${_HANDLER} "$bashargs")"
 
-  # Run the handler function from the script
-  RESPONSE=$($_HANDLER "$EVENT_DATA")
-  
-  echo "response: $RESPONSE"
+  #   echo "response: ${RESPONSE}"
 
+  #   # Send the response
+  #   echo "url: http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/${REQUEST_ID}/response"
+  #   curl "http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/${REQUEST_ID}/response" -d "${RESPONSE}"
+  # done
+  while true; do
+    HEADERS="$(mktemp)"
+    # Get an event. The HTTP request will block until one is received
+    EVENT_DATA=$(curl -sS -LD "${HEADERS}" "http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/next")
+    echo "event: ${EVENT_DATA}"
+    # Extract request ID by scraping response headers received above
+    REQUEST_ID=$(grep -Fi Lambda-Runtime-Aws-Request-Id "${HEADERS}" | tr -d '[:space:]' | cut -d: -f2)
+    echo "request: ${REQUEST_ID}"
+    bashargs=$(parseEventToArgs "$EVENT_DATA")
+    
+    # Run the handler function from the script and capture both output and exit status
+    RESPONSE="$(${_HANDLER} "$bashargs")"
+    EXIT_STATUS=$?
 
-  # Send the response
-  echo "url: http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/$REQUEST_ID/response"
-  curl "http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/$REQUEST_ID/response"  -d "$RESPONSE"
-done
+    if [ $EXIT_STATUS -ne 0 ]; then
+      # Send the error response, preserving the debug output
+      echo "error response: $RESPONSE"
+      curl -X POST "http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/${REQUEST_ID}/error" \
+        -d "{\"errorMessage\": \"$(echo "$RESPONSE" | jq -Rs .)\", \"errorType\": \"FunctionError\", \"stackTrace\": []}"
+    else
+      # Send the successful response
+      echo "response: ${RESPONSE}"
+      curl -X POST "http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/${REQUEST_ID}/response" -d "${RESPONSE}"
+    fi
+  done
+else
+  # Not running in AWS Lambda, execute /var/task/main.sh with args passed to Docker
+  /var/task/main.sh "$@"
+fi

@@ -1,0 +1,34 @@
+# idea IDE project files
+.idea/
+*.iml
+
+# vscode IDE project files
+.vscode
+
+#  Local .terraform directories
+**/.terraform/*
+**/.terraform_ci/*
+
+# Ignore tfstate backup files
+*.tfstate
+*.tfstate.*
+
+# Ignore tf crash logs
+crash.log
+
+# generated files
+*.pyc
+**/generated/*
+
+# OS metadata files
+.DS_Store
+
+# Emacs temp files
+.#*
+
+# Vim temp files
+.*.swp
+
+# Ignore CI logs
+lint_tf.log
+tf.plan

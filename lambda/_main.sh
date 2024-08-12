@@ -1,14 +1,27 @@
 #!/usr/bin/env bash
 
-echo "Running _main.sh with arguments: $@"
+# Function to handle the Lambda event
+handle_lambda_event() {
+    # Read input from standard input
+    input=$(cat -)
 
-# Add your script logic here
-# Example logic to demonstrate script execution
-for arg in "$@"
-do
-    echo "Processing argument: $arg"
-done
+    # Extract values from the input JSON (example assumes 'name' key)
+    name=$(echo "$input" | jq -r '.name')
 
-echo "_main.sh script execution completed."
+    # Perform some action with the input (example: greeting message)
+    response=$(jq -n --arg message "Hello, $name" '{message: $message}')
 
-exit 0
+    # Output the response as JSON
+    echo "$response"
+}
+
+# Check if running as a Lambda container
+if [ "$AWS_LAMBDA_RUNTIME_API" ]; then
+    handle_lambda_event
+else
+    echo
+    echo "MAIN: reached main script $0"
+    echo "MAIN: local content: $(ls -la)"
+    echo "MAIN: args submitted: $@"
+    echo
+fi

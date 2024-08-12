@@ -1,0 +1,79 @@
+stages:
+  - setup:
+      - default_checkout
+      # testing tag
+      - groovy: >
+          env.TEST_IMAGE_ID = sh(script: 'echo "WORKINGIMAGE"', returnStdout: true).trim()  
+      # set vars the hard way
+      - groovy: >
+          env.PROD_REPO_ID = sh(script: 'echo "332176809242"', returnStdout: true).trim()
+      - groovy: >
+          env.PREPROD_REPO_ID = sh(script: 'echo "620354051118"', returnStdout: true).trim()
+      - groovy: >
+          env.ECR_IMAGE_NAME = sh(script: 'echo "toast-chase-h2h-key-rotate"', returnStdout: true).trim()
+      - groovy: >
+          env.PASSED_BASE_TAG = sh(script: 'echo "refined"', returnStdout: true).trim()
+  - version_tag:
+      - with_git_key:
+          - external/tadpole/github_key
+      - groovy: >
+          env.VERSION = sh(script: 'echo "$(git rev-parse --short HEAD)"', returnStdout: true).trim()
+      - shell:
+          - echo version ${VERSION}
+      - groovy: >
+          env.TIMESTAMP = Calendar.getInstance().getTime().format('YYYYMMddHHmmss',TimeZone.getTimeZone('EDT'))
+      - shell:
+          - echo timestamp ${TIMESTAMP}
+    # build image
+  - build:
+      - docker_login:
+          accounts:
+            - preproduction
+      - shell:
+            - set +x
+            - docker image build --pull --no-cache -t toast/${ECR_IMAGE_NAME}:${TIMESTAMP} .
+            - set -x
+
+
+#  # scan image 
+#  - scan:
+#      - groovy: >
+#          prismaCloudScanImage ca: '',
+#            cert: '',
+#            dockerAddress: 'unix:///var/run/docker.sock',
+#            image: "${VERSION}",
+#            key: '',
+#            logLevel: 'info',
+#            podmanPath: '',
+#            project: '',
+#            resultsFile: 'prisma-cloud-scan-results.json',
+#            ignoreImageBuildTime:true
+
+  # Tag and push image to preprod on every tadpole build
+  - tag_and_push_preprod:
+      - when: >
+          params.TADPOLE_BRANCH == 'main'
+      - shell:
+          - docker tag toast/${ECR_IMAGE_NAME}:${TIMESTAMP} ${ECR_IMAGE_NAME}:${VERSION}
+      - docker_login:
+          accounts:
+            - preproduction
+      - docker_tag_and_push:
+          account: preproduction
+          image_name: toast/${ECR_IMAGE_NAME}
+          version: $VERSION
+  - second_tag_preprod:
+      - when: >
+          params.TADPOLE_BRANCH == 'main'
+      - docker_login:
+          accounts:
+            - preproduction
+      - shell: 
+          - MY_MANIFEST=$(aws ecr batch-get-image --registry-id ${PREPROD_REPO_ID} --repository-name toast/${ECR_IMAGE_NAME} --image-ids imageTag=${VERSION} --region us-east-1 --query images[].imageManifest --output text)
+          - echo manifest $MY_MANIFEST
+          - aws ecr put-image --repository-name toast/${ECR_IMAGE_NAME} --registry-id ${PREPROD_REPO_ID} --image-tag ${PASSED_BASE_TAG} --image-manifest "$MY_MANIFEST" --region us-east-1
+          - aws ecr put-image --repository-name toast/${ECR_IMAGE_NAME} --registry-id ${PREPROD_REPO_ID} --image-tag ${TIMESTAMP} --image-manifest "$MY_MANIFEST" --region us-east-1
+          - aws ecr put-image --repository-name toast/${ECR_IMAGE_NAME} --registry-id ${PREPROD_REPO_ID} --image-tag ${TEST_IMAGE_ID} --image-manifest "$MY_MANIFEST" --region us-east-1
+post:
+  failure:
+    - echo: build failed

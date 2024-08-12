@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<activateRapidRenewalKeyDetails>
+  <partnerID>TOAST</partnerID>
+  <keyType>PGP</keyType>
+  <!--This serialNumber is the eight character short KeyID of the PGP key
+   to replace the ‘0x1A2B3C4D’ string below.   Add '0x' at the start of the
+   serial number if it is missing.-->
+  <serialNumber>0xSERIALNUMBER</serialNumber>
+</activateRapidRenewalKeyDetails>
