@@ -1,0 +1,135 @@
+resource "aws_ssm_document" "chase_h2h_invoke_lambda_ssm_document" {
+  name          = "ChaseH2HInvokeLambdaFunctionWithArgs"
+  document_type = "Automation"
+  content       = jsonencode({
+    schemaVersion = "0.3",
+    description   = "Document to invoke Lambda function with a single args parameter",
+    parameters    = {
+      LambdaFunctionName = {
+        type        = "String"
+        description = "Name of the Lambda function to invoke"
+        default = "${aws_lambda_function.key_rotate_function.function_name}"
+      },
+      args = {
+        type        = "String"
+        description = "Command-line arguments to pass to the Lambda function"
+      }
+    },
+    mainSteps = [
+      {
+        action = "aws:invokeLambdaFunction"
+        name   = "invokeLambda"
+        inputs = {
+          FunctionName = "{{ LambdaFunctionName }}"
+          InputPayload = {
+            args = "{{ args }}"
+          }
+        }
+      }
+    ]
+  })
+}
+
+# Policy for Accessing SSM Document and Invoking Lambda
+
+data "aws_iam_policy_document" "chase_h2h_ssm_lambda_invoke_policy_doc" {
+  # document execution
+  statement {
+    effect  = "Allow"
+    actions = [
+      "ssm:StartAutomationExecution",
+      "ssm:GetAutomationExecution"
+    ]
+    resources = var.ssm_doc_resources
+  }
+  # document invoke lambda
+  statement {
+    effect  = "Allow"
+    actions = [
+      "ssm:PassRole",
+      "lambda:InvokeFunction",
+      "lambda:InvokeAsync",
+      "iam:PassRole",
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+    resources = [
+      aws_ssm_document.chase_h2h_invoke_lambda_ssm_document.arn,
+      aws_lambda_function.key_rotate_function.arn
+    ]
+  }
+  # document read-only permission to interact with console
+  statement {
+    effect  = "Allow"
+    actions = [
+      "ssm:ListDocuments",
+      "ssm:ListDocumentVersions",
+      "ssm:DescribeDocument",
+      "ssm:GetDocument",
+      "ssm:DescribeAutomationExecutions",
+      "ssm:DescribeAutomationStepExecutions",
+      "lambda:ListFunctions",
+      "lambda:GetFunction",
+      "lambda:GetAccountSettings",
+      "cloudwatch:GetMetricData",
+      "cloudwatch:GetMetricStatistics",
+      "cloudwatch:DescribeAlarms",
+      "cloudwatch:DescribeAlarmHistory",
+      "logs:DescribeLogGroups",
+      "logs:DescribeLogStreams",
+      "logs:GetLogEvents"
+    ]
+    resources = ["*"]
+  }
+}
+
+
+
+
+
+resource "aws_iam_policy" "chase_h2h_ssm_lambda_invoke_policy" {
+  name   = "chase_h2h_key_rotate_ssm_lambda_invoke_policy"
+  policy = data.aws_iam_policy_document.chase_h2h_ssm_lambda_invoke_policy_doc.json
+}
+
+resource "aws_iam_role_policy_attachment" "chase_h2h_ssm_lambda_invoke_policy_attachment" {
+  role       = aws_iam_role.toast_user_chase_h2h_key_rotate_lambda_ssm_payments.name # this will be created in tf-import as an okta role
+  policy_arn = aws_iam_policy.chase_h2h_ssm_lambda_invoke_policy.arn
+}
+
+# add access to ssm kms key...check
+# https://github.toasttab.com/toasttab/tf-import/blob/60bd164e1123333d155b23ce51de089f76cf76c3/envs-core/preproduction/kms/ssm.tf
+  
+# okta assume role for playground env
+data "aws_iam_policy_document" "chase_h2h_assume_role_policy" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithSAML"]
+    condition {
+      test     = "StringEquals"
+      variable = "SAML:aud"
+      values   = ["https://signin.aws.amazon.com/saml"]
+    }
+    principals {
+      type        = "Federated"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:saml-provider/okta"]
+    }
+  }
+  statement {
+    effect  = "Allow"
+    actions = ["sts:TagSession"]
+    principals {
+      type        = "Federated"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:saml-provider/okta"]
+    }
+  }
+}
+
+resource "aws_iam_role" "toast_user_chase_h2h_key_rotate_lambda_ssm_payments" {
+  name        = "toast-role-user-chase-h2h-key-rotate-lambda-ssm-payments"
+  description = "role to allow toast user to assume role to invoke chase h2h key rotate lambda function"
+
+  assume_role_policy = data.aws_iam_policy_document.chase_h2h_assume_role_policy.json
+}
+

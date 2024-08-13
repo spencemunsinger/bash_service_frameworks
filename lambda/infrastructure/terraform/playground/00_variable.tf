@@ -14,5 +14,15 @@ variable "image_tag" {
   description = "Docker image tag"
   type        = string
   #default     = "refined"
-  default     = "ecs-20240807164400"
+  default     = "20240812132900"
+}
+
+variable "ssm_doc_resources" {
+  description = "ssm document arns for list as resources"
+  type        = list(string)
+  default     = [
+    "arn:aws:ssm:us-east-1:676018146487:document/ChaseH2HInvokeLambdaFunctionWithArgs*",
+    "arn:aws:ssm:us-east-1:676018146487:automation-definition/ChaseH2HInvokeLambdaFunctionWithArgs*",
+    "arn:aws:ssm:us-east-1:676018146487:automation-execution/*"
+  ]
 }

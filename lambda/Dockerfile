@@ -1,5 +1,5 @@
-#FROM ubuntu:22.04
-FROM artifactory.eng.toasttab.com/dockerhub/ubuntu:22.04
+#FROM artifactory.eng.toasttab.com/dockerhub/ubuntu:22.04
+FROM ubuntu:22.04
 
 # Define build-time variable
 ARG RUN_DIR=/var/task
